@@ -1,17 +1,24 @@
-FROM amazonlinux:2023
+FROM php:8.4-apache AS build
 
-RUN dnf install -y \
-    php \
-    php-cli \
-    php-mbstring \
-    php-json \
-    php-xml \
-    php-curl \
-    && dnf clean all
+RUN apt-get update && apt-get install -y \
+    git unzip libzip-dev \
+    && docker-php-ext-install zip pdo pdo_mysql \
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-COPY . /app
+RUN a2enmod rewrite
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-EXPOSE 8080
+WORKDIR /var/www/html
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --optimize-autoloader
+COPY . .
 
-CMD ["php", "-S", "0.0.0.0:8080", "-t", "/app"]
+FROM php:8.4-apache
+RUN a2enmod rewrite
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+
+COPY --from=build /var/www/html /var/www/html
+RUN chown -R www-data:www-data /var/www/html
+
+EXPOSE 80
+CMD ["apache2-foreground"]
